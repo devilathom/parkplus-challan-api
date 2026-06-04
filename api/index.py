@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+from urllib.parse import parse_qs
 
 
 CHALLAN_API_URL = "https://challan.parkplus.io/api/v1/challan/challan-list"
@@ -24,20 +25,18 @@ def build_headers():
     }
 
 
-# =========================
-# VERCEL ENTRYPOINT
-# =========================
-
 def handler(request):
     try:
 
-        # ✅ FIX: read query params safely for Vercel
-        query = request.get("queryStringParameters") or {}
+        # ✅ SAFE VERCEL QUERY PARSING
+        query_string = getattr(request, "query_string", "")
 
-        vehicle = query.get("vehicle")
-        page = query.get("page", "1")
-        limit = query.get("limit", "50")
-        status = query.get("status", "PENDING")
+        params = parse_qs(query_string)
+
+        vehicle = params.get("vehicle", [None])[0]
+        page = params.get("page", ["1"])[0]
+        limit = params.get("limit", ["50"])[0]
+        status = params.get("status", ["PENDING"])[0]
 
         if not vehicle:
             return response(400, {"error": "vehicle required"})
@@ -84,13 +83,9 @@ def handler(request):
     except Exception as e:
         return response(500, {
             "success": False,
-            "error": str(str(e))
+            "error": str(e)
         })
 
-
-# =========================
-# RESPONSE FORMAT
-# =========================
 
 def response(status_code, body):
     return {
@@ -102,5 +97,5 @@ def response(status_code, body):
     }
 
 
-# IMPORTANT: expose handler
+# Vercel entrypoint
 app = handler
