@@ -1,129 +1,50 @@
 import os
-import time
 import requests
-from fastapi import FastAPI, Query
 from mangum import Mangum
+from fastapi import FastAPI, Query
 
 app = FastAPI()
 
-# =========================
-# ENV VARIABLES
-# =========================
-
-AUTHORIZATION = os.getenv("AUTHORIZATION", "")
-CLIENT_ID = os.getenv("CLIENT_ID", "")
-CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
-
-DEVICE_ID = os.getenv("DEVICE_ID", "")
-NEW_DEVICE_ID = os.getenv("NEW_DEVICE_ID", "")
-
-APP_NAME = os.getenv("APP_NAME", "Park+ PWA")
-PACKAGE_NAME = os.getenv("PACKAGE_NAME", "web.pwa")
-PLATFORM = os.getenv("PLATFORM", "web")
-DEVICE_OS = os.getenv("DEVICE_OS", "unknown")
-
-USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0")
-ORIGIN = os.getenv("ORIGIN", "https://parkplus.io")
-
-PROFILE_URL = os.getenv(
-    "PROFILE_URL",
-    "https://user-service.parkplus.io/api/user/profile/"
-)
-
 CHALLAN_API_URL = "https://challan.parkplus.io/api/v1/challan/challan-list"
 
-# =========================
-# TOKEN CACHE (basic)
-# =========================
 
-_token_cache = {
-    "token": AUTHORIZATION,
-    "time": time.time()
-}
-
-
-def get_token():
-    return _token_cache["token"]
-
-# =========================
-# HEADERS
-# =========================
-
-def build_headers():
+def headers():
     return {
         "accept": "application/json",
-        "authorization": get_token(),
-        "client-id": CLIENT_ID,
-        "client-secret": CLIENT_SECRET,
-        "device-id": DEVICE_ID,
-        "new-device-id": NEW_DEVICE_ID,
-        "app-name": APP_NAME,
-        "package-name": PACKAGE_NAME,
-        "platform": PLATFORM,
-        "device-os": DEVICE_OS,
-        "origin": ORIGIN,
-        "user-agent": USER_AGENT
+        "authorization": os.getenv("AUTHORIZATION", ""),
+        "client-id": os.getenv("CLIENT_ID", ""),
+        "client-secret": os.getenv("CLIENT_SECRET", ""),
+        "device-id": os.getenv("DEVICE_ID", ""),
+        "new-device-id": os.getenv("NEW_DEVICE_ID", ""),
+        "app-name": os.getenv("APP_NAME", "Park+ PWA"),
+        "package-name": os.getenv("PACKAGE_NAME", "web.pwa"),
+        "platform": os.getenv("PLATFORM", "web"),
+        "device-os": os.getenv("DEVICE_OS", "unknown"),
+        "origin": os.getenv("ORIGIN", "https://parkplus.io"),
+        "user-agent": os.getenv("USER_AGENT", "Mozilla/5.0"),
     }
 
-# =========================
-# CHALLAN API
-# =========================
 
-@app.get("/api/challan")
-def get_challan(
-    vehicle: str = Query(...),
-    page: int = 1,
-    limit: int = 50,
-    status: str = "PENDING"
-):
+@app.get("/")
+def get_challan(vehicle: str, page: int = 1, limit: int = 50, status: str = "PENDING"):
 
-    headers = build_headers()
-
-    try:
-        res = requests.get(
-            CHALLAN_API_URL,
-            headers=headers,
-            params={
-                "vehicle_number": vehicle,
-                "status": status,
-                "page": page,
-                "limit": limit
-            },
-            timeout=30
-        )
-        challan_data = res.json()
-    except Exception as e:
-        challan_data = {
-            "error": str(e)
-        }
-
-    # =========================
-    # PROFILE API
-    # =========================
-
-    profile_data = None
+    res = requests.get(
+        CHALLAN_API_URL,
+        headers=headers(),
+        params={
+            "vehicle_number": vehicle,
+            "status": status,
+            "page": page,
+            "limit": limit
+        },
+        timeout=30
+    )
 
     try:
-        profile_res = requests.get(
-            PROFILE_URL,
-            headers=headers,
-            timeout=30
-        )
-        profile_data = profile_res.json()
-    except Exception as e:
-        profile_data = {
-            "error": str(e)
-        }
+        return res.json()
+    except:
+        return {"error": res.text}
 
-    return {
-        "success": True,
-        "vehicle": vehicle,
-        "challan": challan_data,
-        "profile": profile_data
-    }
 
-# =========================
-# VERCEL HANDLER (IMPORTANT)
-# =========================
-
+# IMPORTANT: Vercel entrypoint
 handler = Mangum(app)
