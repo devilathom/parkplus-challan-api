@@ -5,10 +5,8 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 # =========================
-# ENV VARIABLES
+# ENV VARIABLES (ONLY TOKENS)
 # =========================
-
-API_BASE_URL = os.getenv("API_BASE_URL", "")
 
 AUTHORIZATION = os.getenv("AUTHORIZATION", "")
 CLIENT_ID = os.getenv("CLIENT_ID", "")
@@ -27,6 +25,12 @@ ORIGIN = os.getenv("ORIGIN", "")
 
 PROFILE_URL = os.getenv("PROFILE_URL", "")
 
+# =========================
+# FIXED API URL (HARD CODED)
+# =========================
+
+CHALLAN_API_URL = "https://challan.parkplus.io/api/v1/challan/challan-list"
+
 
 class handler(BaseHTTPRequestHandler):
 
@@ -39,7 +43,6 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
 
         try:
-
             query = parse_qs(urlparse(self.path).query)
 
             vehicle_number = query.get("vehicle", [""])[0]
@@ -68,8 +71,12 @@ class handler(BaseHTTPRequestHandler):
                 "user-agent": USER_AGENT
             }
 
+            # =========================
+            # CHALLAN API CALL
+            # =========================
+
             challan_response = requests.get(
-                API_BASE_URL,
+                CHALLAN_API_URL,
                 headers=headers,
                 params={
                     "vehicle_number": vehicle_number,
@@ -80,8 +87,6 @@ class handler(BaseHTTPRequestHandler):
                 timeout=30
             )
 
-            challan_data = {}
-
             try:
                 challan_data = challan_response.json()
             except:
@@ -89,12 +94,15 @@ class handler(BaseHTTPRequestHandler):
                     "raw_response": challan_response.text
                 }
 
+            # =========================
+            # PROFILE API CALL
+            # =========================
+
             profile_data = None
 
             if PROFILE_URL:
 
                 try:
-
                     profile_response = requests.get(
                         PROFILE_URL,
                         headers=headers,
@@ -104,26 +112,24 @@ class handler(BaseHTTPRequestHandler):
                     profile_data = profile_response.json()
 
                 except Exception as profile_error:
-
                     profile_data = {
                         "error": str(profile_error)
                     }
 
-            final_response = {
+            # =========================
+            # FINAL RESPONSE
+            # =========================
+
+            return self.send_json({
                 "success": True,
                 "vehicle_number": vehicle_number,
                 "challan": challan_data,
                 "profile": profile_data
-            }
-
-            return self.send_json(final_response)
+            })
 
         except Exception as e:
 
-            return self.send_json(
-                {
-                    "success": False,
-                    "error": str(e)
-                },
-                500
-            )
+            return self.send_json({
+                "success": False,
+                "error": str(e)
+            }, 500)
