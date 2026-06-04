@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "functions": {
+    "api/challan.py": {
+      "runtime": "python3.10"
+    }
+  }
+}
