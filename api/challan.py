@@ -1,14 +1,18 @@
 import os
+import json
 import requests
-from mangum import Mangum
-from fastapi import FastAPI, Query
+from urllib.parse import urlparse, parse_qs
 
-app = FastAPI()
 
 CHALLAN_API_URL = "https://challan.parkplus.io/api/v1/challan/challan-list"
+PROFILE_URL = "https://user-service.parkplus.io/api/user/profile/"
 
 
-def headers():
+# =========================
+# HEADERS
+# =========================
+
+def build_headers():
     return {
         "accept": "application/json",
         "authorization": os.getenv("AUTHORIZATION", ""),
@@ -21,30 +25,86 @@ def headers():
         "platform": os.getenv("PLATFORM", "web"),
         "device-os": os.getenv("DEVICE_OS", "unknown"),
         "origin": os.getenv("ORIGIN", "https://parkplus.io"),
-        "user-agent": os.getenv("USER_AGENT", "Mozilla/5.0"),
+        "user-agent": os.getenv("USER_AGENT", "Mozilla/5.0")
     }
 
 
-@app.get("/")
-def get_challan(vehicle: str, page: int = 1, limit: int = 50, status: str = "PENDING"):
+# =========================
+# MAIN SERVERLESS HANDLER
+# =========================
 
-    res = requests.get(
-        CHALLAN_API_URL,
-        headers=headers(),
-        params={
-            "vehicle_number": vehicle,
-            "status": status,
-            "page": page,
-            "limit": limit
-        },
-        timeout=30
-    )
-
+def handler(request, context):
     try:
-        return res.json()
-    except:
-        return {"error": res.text}
+        query = request.get("queryStringParameters") or {}
+
+        vehicle = query.get("vehicle")
+        page = query.get("page", "1")
+        limit = query.get("limit", "50")
+        status = query.get("status", "PENDING")
+
+        if not vehicle:
+            return response(400, {"error": "vehicle parameter required"})
+
+        headers = build_headers()
+
+        # =========================
+        # CHALLAN API CALL
+        # =========================
+        challan_res = requests.get(
+            CHALLAN_API_URL,
+            headers=headers,
+            params={
+                "vehicle_number": vehicle,
+                "status": status,
+                "page": page,
+                "limit": limit
+            },
+            timeout=30
+        )
+
+        try:
+            challan_data = challan_res.json()
+        except:
+            challan_data = {"raw": challan_res.text}
+
+        # =========================
+        # PROFILE API CALL
+        # =========================
+        profile_data = None
+
+        try:
+            profile_res = requests.get(
+                PROFILE_URL,
+                headers=headers,
+                timeout=30
+            )
+            profile_data = profile_res.json()
+        except Exception as e:
+            profile_data = {"error": str(e)}
+
+        return response(200, {
+            "success": True,
+            "vehicle": vehicle,
+            "challan": challan_data,
+            "profile": profile_data
+        })
+
+    except Exception as e:
+        return response(500, {
+            "success": False,
+            "error": str(e)
+        })
 
 
-# IMPORTANT: Vercel entrypoint
-handler = Mangum(app)
+# =========================
+# RESPONSE FORMATTER
+# =========================
+
+def response(status_code, body):
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "body": json.dumps(body)
+    }
