@@ -1,8 +1,8 @@
 import os
 import time
-import json
 import requests
 from fastapi import FastAPI, Query
+from mangum import Mangum
 
 app = FastAPI()
 
@@ -25,13 +25,15 @@ DEVICE_OS = os.getenv("DEVICE_OS", "unknown")
 USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0")
 ORIGIN = os.getenv("ORIGIN", "https://parkplus.io")
 
-PROFILE_URL = os.getenv("PROFILE_URL", "https://user-service.parkplus.io/api/user/profile/")
+PROFILE_URL = os.getenv(
+    "PROFILE_URL",
+    "https://user-service.parkplus.io/api/user/profile/"
+)
 
 CHALLAN_API_URL = "https://challan.parkplus.io/api/v1/challan/challan-list"
 
-
 # =========================
-# SIMPLE TOKEN CACHE
+# TOKEN CACHE (basic)
 # =========================
 
 _token_cache = {
@@ -43,9 +45,8 @@ _token_cache = {
 def get_token():
     return _token_cache["token"]
 
-
 # =========================
-# HEADERS BUILDER
+# HEADERS
 # =========================
 
 def build_headers():
@@ -64,9 +65,8 @@ def build_headers():
         "user-agent": USER_AGENT
     }
 
-
 # =========================
-# API ROUTE
+# CHALLAN API
 # =========================
 
 @app.get("/api/challan")
@@ -79,22 +79,27 @@ def get_challan(
 
     headers = build_headers()
 
-    challan_res = requests.get(
-        CHALLAN_API_URL,
-        headers=headers,
-        params={
-            "vehicle_number": vehicle,
-            "status": status,
-            "page": page,
-            "limit": limit
-        },
-        timeout=30
-    )
-
     try:
-        challan_data = challan_res.json()
-    except:
-        challan_data = {"raw": challan_res.text}
+        res = requests.get(
+            CHALLAN_API_URL,
+            headers=headers,
+            params={
+                "vehicle_number": vehicle,
+                "status": status,
+                "page": page,
+                "limit": limit
+            },
+            timeout=30
+        )
+        challan_data = res.json()
+    except Exception as e:
+        challan_data = {
+            "error": str(e)
+        }
+
+    # =========================
+    # PROFILE API
+    # =========================
 
     profile_data = None
 
@@ -106,7 +111,9 @@ def get_challan(
         )
         profile_data = profile_res.json()
     except Exception as e:
-        profile_data = {"error": str(e)}
+        profile_data = {
+            "error": str(e)
+        }
 
     return {
         "success": True,
@@ -115,11 +122,8 @@ def get_challan(
         "profile": profile_data
     }
 
-
 # =========================
-# ✅ VERCEL FIX (IMPORTANT)
+# VERCEL HANDLER (IMPORTANT)
 # =========================
-
-from mangum import Mangum
 
 handler = Mangum(app)
