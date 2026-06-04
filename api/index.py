@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs
 
 
 CHALLAN_API_URL = "https://challan.parkplus.io/api/v1/challan/challan-list"
@@ -30,12 +30,28 @@ def build_headers():
 
 
 # =========================
-# MAIN SERVERLESS HANDLER
+# RESPONSE FORMATTER
 # =========================
 
-def handler(request, context):
+def response(status_code, body):
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "body": json.dumps(body)
+    }
+
+
+# =========================
+# MAIN HANDLER (VERCEL CORRECT)
+# =========================
+
+def handler(request):
     try:
-        query = request.get("queryStringParameters") or {}
+
+        # Vercel query params
+        query = request.query_params
 
         vehicle = query.get("vehicle")
         page = query.get("page", "1")
@@ -94,17 +110,3 @@ def handler(request, context):
             "success": False,
             "error": str(e)
         })
-
-
-# =========================
-# RESPONSE FORMATTER
-# =========================
-
-def response(status_code, body):
-    return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json"
-        },
-        "body": json.dumps(body)
-    }
