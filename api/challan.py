@@ -31,7 +31,7 @@ CHALLAN_API_URL = "https://challan.parkplus.io/api/v1/challan/challan-list"
 
 
 # =========================
-# SIMPLE TOKEN CACHE (optional upgrade base)
+# SIMPLE TOKEN CACHE
 # =========================
 
 _token_cache = {
@@ -41,10 +41,6 @@ _token_cache = {
 
 
 def get_token():
-    """
-    Placeholder for auto-refresh logic.
-    If token expires, you can implement refresh API here.
-    """
     return _token_cache["token"]
 
 
@@ -83,9 +79,6 @@ def get_challan(
 
     headers = build_headers()
 
-    # -------------------------
-    # CHALLAN API CALL
-    # -------------------------
     challan_res = requests.get(
         CHALLAN_API_URL,
         headers=headers,
@@ -103,9 +96,6 @@ def get_challan(
     except:
         challan_data = {"raw": challan_res.text}
 
-    # -------------------------
-    # PROFILE API CALL
-    # -------------------------
     profile_data = None
 
     try:
@@ -118,12 +108,18 @@ def get_challan(
     except Exception as e:
         profile_data = {"error": str(e)}
 
-    # -------------------------
-    # FINAL RESPONSE
-    # -------------------------
     return {
         "success": True,
         "vehicle": vehicle,
         "challan": challan_data,
         "profile": profile_data
     }
+
+
+# =========================
+# ✅ VERCEL FIX (IMPORTANT)
+# =========================
+
+from mangum import Mangum
+
+handler = Mangum(app)
