@@ -1,47 +1,129 @@
-from http.server import BaseHTTPRequestHandler
+import os
 import json
 import requests
-import os
+from http.server import BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
 
-PARKPLUS_TOKEN = os.getenv("PARKPLUS_TOKEN")
+# =========================
+# ENV VARIABLES
+# =========================
+
+API_BASE_URL = os.getenv("API_BASE_URL", "")
+
+AUTHORIZATION = os.getenv("AUTHORIZATION", "")
+CLIENT_ID = os.getenv("CLIENT_ID", "")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET", "")
+
+DEVICE_ID = os.getenv("DEVICE_ID", "")
+NEW_DEVICE_ID = os.getenv("NEW_DEVICE_ID", "")
+
+APP_NAME = os.getenv("APP_NAME", "")
+PACKAGE_NAME = os.getenv("PACKAGE_NAME", "")
+PLATFORM = os.getenv("PLATFORM", "")
+DEVICE_OS = os.getenv("DEVICE_OS", "")
+
+USER_AGENT = os.getenv("USER_AGENT", "")
+ORIGIN = os.getenv("ORIGIN", "")
+
+PROFILE_URL = os.getenv("PROFILE_URL", "")
+
 
 class handler(BaseHTTPRequestHandler):
+
+    def send_json(self, data, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
     def do_GET(self):
+
         try:
-            from urllib.parse import urlparse, parse_qs
 
             query = parse_qs(urlparse(self.path).query)
-            vehicle = query.get("vehicle", [""])[0]
 
-            if not vehicle:
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(
-                    json.dumps({"error": "vehicle required"}).encode()
+            vehicle_number = query.get("vehicle", [""])[0]
+            page = query.get("page", ["1"])[0]
+            limit = query.get("limit", ["50"])[0]
+            status_filter = query.get("status", ["PENDING"])[0]
+
+            if not vehicle_number:
+                return self.send_json(
+                    {"error": "vehicle parameter required"},
+                    400
                 )
-                return
 
             headers = {
-                "Authorization": PARKPLUS_TOKEN,
-                "Accept": "application/json"
+                "accept": "application/json",
+                "authorization": AUTHORIZATION,
+                "client-id": CLIENT_ID,
+                "client-secret": CLIENT_SECRET,
+                "device-id": DEVICE_ID,
+                "new-device-id": NEW_DEVICE_ID,
+                "app-name": APP_NAME,
+                "package-name": PACKAGE_NAME,
+                "platform": PLATFORM,
+                "device-os": DEVICE_OS,
+                "origin": ORIGIN,
+                "user-agent": USER_AGENT
             }
 
-            url = (
-                "https://challan.parkplus.io/api/v1/challan/challan-list"
-                f"?vehicle_number={vehicle}"
-                "&status=PENDING&page=1&limit=50"
+            challan_response = requests.get(
+                API_BASE_URL,
+                headers=headers,
+                params={
+                    "vehicle_number": vehicle_number,
+                    "status": status_filter,
+                    "page": page,
+                    "limit": limit
+                },
+                timeout=30
             )
 
-            r = requests.get(url, headers=headers, timeout=30)
+            challan_data = {}
 
-            self.send_response(r.status_code)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(r.content)
+            try:
+                challan_data = challan_response.json()
+            except:
+                challan_data = {
+                    "raw_response": challan_response.text
+                }
+
+            profile_data = None
+
+            if PROFILE_URL:
+
+                try:
+
+                    profile_response = requests.get(
+                        PROFILE_URL,
+                        headers=headers,
+                        timeout=30
+                    )
+
+                    profile_data = profile_response.json()
+
+                except Exception as profile_error:
+
+                    profile_data = {
+                        "error": str(profile_error)
+                    }
+
+            final_response = {
+                "success": True,
+                "vehicle_number": vehicle_number,
+                "challan": challan_data,
+                "profile": profile_data
+            }
+
+            return self.send_json(final_response)
 
         except Exception as e:
-            self.send_response(500)
-            self.end_headers()
-            self.wfile.write(
-                json.dumps({"error": str(e)}).encode()
+
+            return self.send_json(
+                {
+                    "success": False,
+                    "error": str(e)
+                },
+                500
             )
