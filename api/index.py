@@ -24,23 +24,27 @@ def build_headers():
     }
 
 
+# =========================
+# VERCEL ENTRYPOINT
+# =========================
+
 def handler(request):
     try:
-        params = request.query_params
 
-        vehicle = params.get("vehicle")
-        page = params.get("page", "1")
-        limit = params.get("limit", "50")
-        status = params.get("status", "PENDING")
+        # ✅ FIX: read query params safely for Vercel
+        query = request.get("queryStringParameters") or {}
+
+        vehicle = query.get("vehicle")
+        page = query.get("page", "1")
+        limit = query.get("limit", "50")
+        status = query.get("status", "PENDING")
 
         if not vehicle:
-            return {
-                "statusCode": 400,
-                "body": json.dumps({"error": "vehicle required"})
-            }
+            return response(400, {"error": "vehicle required"})
 
         headers = build_headers()
 
+        # ---------------- CHALLAN API ----------------
         challan_res = requests.get(
             CHALLAN_API_URL,
             headers=headers,
@@ -58,8 +62,8 @@ def handler(request):
         except:
             challan_data = {"raw": challan_res.text}
 
+        # ---------------- PROFILE API ----------------
         profile_data = None
-
         try:
             profile_res = requests.get(
                 PROFILE_URL,
@@ -70,25 +74,33 @@ def handler(request):
         except Exception as e:
             profile_data = {"error": str(e)}
 
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Content-Type": "application/json"
-            },
-            "body": json.dumps({
-                "success": True,
-                "vehicle": vehicle,
-                "challan": challan_data,
-                "profile": profile_data
-            })
-        }
+        return response(200, {
+            "success": True,
+            "vehicle": vehicle,
+            "challan": challan_data,
+            "profile": profile_data
+        })
 
     except Exception as e:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
+        return response(500, {
+            "success": False,
+            "error": str(str(e))
+        })
 
 
-# 👇 THIS IS THE CRITICAL FIX FOR VERCEL
+# =========================
+# RESPONSE FORMAT
+# =========================
+
+def response(status_code, body):
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "body": json.dumps(body)
+    }
+
+
+# IMPORTANT: expose handler
 app = handler
