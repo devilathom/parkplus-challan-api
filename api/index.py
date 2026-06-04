@@ -1,16 +1,11 @@
 import os
 import json
 import requests
-from urllib.parse import parse_qs
 
 
 CHALLAN_API_URL = "https://challan.parkplus.io/api/v1/challan/challan-list"
 PROFILE_URL = "https://user-service.parkplus.io/api/user/profile/"
 
-
-# =========================
-# HEADERS
-# =========================
 
 def build_headers():
     return {
@@ -29,43 +24,23 @@ def build_headers():
     }
 
 
-# =========================
-# RESPONSE FORMATTER
-# =========================
-
-def response(status_code, body):
-    return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json"
-        },
-        "body": json.dumps(body)
-    }
-
-
-# =========================
-# MAIN HANDLER (VERCEL CORRECT)
-# =========================
-
 def handler(request):
     try:
+        params = request.query_params
 
-        # Vercel query params
-        query = request.query_params
-
-        vehicle = query.get("vehicle")
-        page = query.get("page", "1")
-        limit = query.get("limit", "50")
-        status = query.get("status", "PENDING")
+        vehicle = params.get("vehicle")
+        page = params.get("page", "1")
+        limit = params.get("limit", "50")
+        status = params.get("status", "PENDING")
 
         if not vehicle:
-            return response(400, {"error": "vehicle parameter required"})
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"error": "vehicle required"})
+            }
 
         headers = build_headers()
 
-        # =========================
-        # CHALLAN API CALL
-        # =========================
         challan_res = requests.get(
             CHALLAN_API_URL,
             headers=headers,
@@ -83,9 +58,6 @@ def handler(request):
         except:
             challan_data = {"raw": challan_res.text}
 
-        # =========================
-        # PROFILE API CALL
-        # =========================
         profile_data = None
 
         try:
@@ -98,15 +70,25 @@ def handler(request):
         except Exception as e:
             profile_data = {"error": str(e)}
 
-        return response(200, {
-            "success": True,
-            "vehicle": vehicle,
-            "challan": challan_data,
-            "profile": profile_data
-        })
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": json.dumps({
+                "success": True,
+                "vehicle": vehicle,
+                "challan": challan_data,
+                "profile": profile_data
+            })
+        }
 
     except Exception as e:
-        return response(500, {
-            "success": False,
-            "error": str(e)
-        })
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)})
+        }
+
+
+# 👇 THIS IS THE CRITICAL FIX FOR VERCEL
+app = handler
