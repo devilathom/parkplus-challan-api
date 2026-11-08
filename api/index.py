@@ -1,11 +1,17 @@
+
 import os
-import json
+import re
 import requests
-from urllib.parse import parse_qs
+
+from fastapi import FastAPI, Query
+from fastapi.responses import JSONResponse
+
+app = FastAPI(title="ParkPlus Challan API")
 
 
-CHALLAN_API_URL = "https://challan.parkplus.io/api/v1/challan/challan-list"
-PROFILE_URL = "https://user-service.parkplus.io/api/user/profile/"
+CHALLAN_API_URL = (
+    "https://challan.parkplus.io/api/v1/challan/challan-list"
+)
 
 
 def build_headers():
@@ -25,25 +31,45 @@ def build_headers():
     }
 
 
-def handler(request):
+@app.get("/")
+def home():
+    return {
+        "success": True,
+        "message": "ParkPlus Challan API is running",
+        "endpoint": "/fetch?vehicle=HR26EV0001"
+    }
+
+
+@app.get("/fetch")
+def fetch_challan(
+    vehicle: str = Query(...),
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=100),
+    status: str = Query("PENDING")
+):
+    vehicle = vehicle.upper().replace(" ", "")
+
+    if not re.fullmatch(r"[A-Z0-9]{6,12}", vehicle):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": "Invalid vehicle number"
+            }
+        )
+
+    headers = build_headers()
+
+    if not headers["authorization"] or not headers["client-id"]:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": "Missing ParkPlus API credentials"
+            }
+        )
+
     try:
-
-        # ✅ SAFE VERCEL QUERY PARSING
-        query_string = getattr(request, "query_string", "")
-
-        params = parse_qs(query_string)
-
-        vehicle = params.get("vehicle", [None])[0]
-        page = params.get("page", ["1"])[0]
-        limit = params.get("limit", ["50"])[0]
-        status = params.get("status", ["PENDING"])[0]
-
-        if not vehicle:
-            return response(400, {"error": "vehicle required"})
-
-        headers = build_headers()
-
-        # ---------------- CHALLAN API ----------------
         challan_res = requests.get(
             CHALLAN_API_URL,
             headers=headers,
@@ -53,49 +79,57 @@ def handler(request):
                 "page": page,
                 "limit": limit
             },
-            timeout=30
+            timeout=25
         )
 
         try:
             challan_data = challan_res.json()
-        except:
-            challan_data = {"raw": challan_res.text}
+        except ValueError:
+            challan_data = {
+                "raw": challan_res.text[:3000]
+            }
 
-        # ---------------- PROFILE API ----------------
-        profile_data = None
-        try:
-            profile_res = requests.get(
-                PROFILE_URL,
-                headers=headers,
-                timeout=30
+        if not challan_res.ok:
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "success": False,
+                    "error": "ParkPlus upstream API failed",
+                    "upstream_status": challan_res.status_code,
+                    "details": challan_data
+                }
             )
-            profile_data = profile_res.json()
-        except Exception as e:
-            profile_data = {"error": str(e)}
 
-        return response(200, {
+        return {
             "success": True,
             "vehicle": vehicle,
-            "challan": challan_data,
-            "profile": profile_data
-        })
+            "challan": challan_data
+        }
+
+    except requests.Timeout:
+        return JSONResponse(
+            status_code=504,
+            content={
+                "success": False,
+                "error": "ParkPlus API request timed out"
+            }
+        )
+
+    except requests.RequestException as e:
+        return JSONResponse(
+            status_code=502,
+            content={
+                "success": False,
+                "error": "ParkPlus connection failed",
+                "details": str(e)
+            }
+        )
 
     except Exception as e:
-        return response(500, {
-            "success": False,
-            "error": str(e)
-        })
-
-
-def response(status_code, body):
-    return {
-        "statusCode": status_code,
-        "headers": {
-            "Content-Type": "application/json"
-        },
-        "body": json.dumps(body)
-    }
-
-
-# Vercel entrypoint
-app = handler
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(e)
+            }
+        )
